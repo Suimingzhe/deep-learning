@@ -1,5 +1,7 @@
 """
 猫狗大战程序，由于数据集较小，故使用了数据增强！
+第一部分:未使用数据增强
+第二部分：使用了数据增强
 
 图像分类问题的三种策略：1.从头开始训练一个小型模型 2.使用预训练的网络做特征提取 3.对与训练的网络进行微调
 
@@ -289,7 +291,7 @@ model.add(layers.Dropout(rate=0.5)) #dropout在flatten之后加！
 model.add(layers.Dense(units=512, activation='relu'))
 model.add(layers.Dense(units=1, activation='sigmoid')) #sigmoid函数概率预测模型只需要一个units！
 
-model.summary()
+#model.summary()
 
 model.compile(optimizer=optimizers.RMSprop(lr=1e-4), #这里与之前的optimizer='rmsprop'的区别就是这种方式是自己定义的，可以传入参数！
               loss='binary_crossentropy', #sigmoid类型的概率输出采用binary_crossentropy模型
@@ -315,6 +317,12 @@ train_generator = train_datagen.flow_from_directory(train_dir,
                                                     target_size=(150, 150), #resize过程在.flow_from_directory中进行
                                                     batch_size=32, #这里有问题！！！表示每个批量的样本数
                                                     class_mode='binary')
+for inputs_batch, labels_batch in train_generator:
+    print(inputs_batch.shape)
+    print(labels_batch.ndim)
+
+    break
+
 
 validation_generator = validation_datagen.flow_from_directory(validation_dir,
                                                               target_size=(150, 150),
@@ -323,7 +331,7 @@ validation_generator = validation_datagen.flow_from_directory(validation_dir,
 
 # ==================================================================================================================
 # 开始训练！
-
+"""
 tic = time.time()
 
 #这里没有用到上述的image，所以张量就不用转换！
@@ -367,5 +375,5 @@ plt.title('Training and validation loss')
 plt.legend()
 
 plt.show()
-
+"""
 
