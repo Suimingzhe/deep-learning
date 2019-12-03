@@ -36,7 +36,7 @@ conv_base = VGG16(weights = 'imagenet', #指定模型初始化的权重检查点
 conv_base.summary()
 #=======================================================================================================================
 #不使用数据增强快速提取特征,并且加入Dence和dropout
-"""
+
 base_dir = 'E:\python_work\data\cats_and_dogs_small'
 train_dir = os.path.join(base_dir, 'train')
 validation_dir = os.path.join(base_dir, 'validation')
@@ -44,7 +44,7 @@ test_dir = os.path.join(base_dir, 'test')
 
 datagen = ImageDataGenerator(rescale=1./255)
 batch_size = 20
-
+"""
 #定义了一个特征提取的函数，其实就是利用VGG16来进行训练！但是这个训练只是预测结果，因为权重保存下来了！
 def extract_features(directory, sample_count):
     features = np.zeros(shape=(sample_count, 4, 4, 512)) #np.zeros里面两个括号！shape可省略,ndim=4
@@ -60,7 +60,7 @@ def extract_features(directory, sample_count):
         labels[i * batch_size : (i + 1) * batch_size] = labels_batch #标签不变！只是特征变了！
         i += 1
         print(i)
-        if i * batch_size >= sample_count: #>2000样本跳出
+        if i * batch_size >= sample_count: #>2000训练样本跳出
             break
     return features, labels
 
@@ -86,7 +86,8 @@ model.compile(optimizer=optimizers.RMSprop(lr=2e-5),
               metrics=['accuracy'])
 
 #=======================================================================================================================
-#训练
+#训练,这里没有数据增强，也就是只有fit的时候显示的就是20,40,60.../2000,而且也不需要validation_steps！
+# 使用fit_generator时候才会是1,2,3.../step_per_epoch，这里的1,2,3代表的是随机增强里面的batch_size！
 
 history = model.fit(train_features,
                     train_labels,
@@ -121,7 +122,6 @@ plt.show()
 #=======================================================================================================================
 #使用数据增强
 #首先搭建网络，因为是利用VGTG16的权重，所以一定要冻结！
-"""
 model = models.Sequential()
 model.add(conv_base)
 model.add(layers.Flatten())
@@ -169,11 +169,11 @@ validation_generator = test_datagen.flow_from_directory(
 
 model.compile(loss='binary_crossentropy',
               optimizer=optimizers.RMSprop(lr=2e-5),
-              metrics=['acc'])
+              metrics=['accuracy'])
 
 history = model.fit_generator(
       train_generator,
-      steps_per_epoch=100,
+      steps_per_epoch=100, #这里虽然是100*20=2000，但是每一个epoch都是随机数据增强，所以输入都不一样，无数据增强的fit的话就都是一样的了
       epochs=30,
       validation_data=validation_generator,
       validation_steps=50,
@@ -203,7 +203,104 @@ plt.legend()
 plt.show()
 
 #结果表明，利用VGG16 + 自己定义的dense层和softmax，并且使用数据增强（第二种方式）结果最好，验证精度达到96%
-"""
 
-#下面进行预训练第二种方法，微调 fine-tuning
 
+#下面进行预训练第二种方法，微调 fine-tuning,记住这是两部fit，第一步就是上面的方法二，第二部是解冻之后的fit如下所示！
+conv_base.trainable = True
+print(len(model.trainable_weights)) #显示30，一共13conv + 2个dense 共30个可训练权重矩阵和偏差
+
+#这一段写的好，不用if if if这样按名字写
+set_trainable = False
+for layer in conv_base.layers:
+    if layer.name == 'block5_conv1':
+        set_trainable = True
+    if set_trainable:
+        layer.trainable = True
+    else:
+        layer.trainable = False
+
+print(len(model.trainable_weights)) #显示10 顶部3个conv + 2个dense 共10
+
+#解冻过后开始第二阶段的fit
+
+model.compile(loss='binary_crossentropy',
+              optimizer=optimizers.RMSprop(lr=1e-5),
+              metrics=['acc'])
+
+history = model.fit_generator(
+      train_generator,
+      steps_per_epoch=100,
+      epochs=100,
+      validation_data=validation_generator,
+      validation_steps=50)
+
+#=======================================================================================================================
+#画图
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+epochs = range(len(acc))
+
+plt.plot(epochs, acc, 'bo', label='Training acc')
+plt.plot(epochs, val_acc, 'b', label='Validation acc')
+plt.title('Training and validation accuracy')
+plt.legend()
+
+plt.figure()
+
+plt.plot(epochs, loss, 'bo', label='Training loss')
+plt.plot(epochs, val_loss, 'b', label='Validation loss')
+plt.title('Training and validation loss')
+plt.legend()
+
+plt.show()
+
+
+#=======================================================================================================================
+#画图刚好看，曲线更平滑的方法!!!-让每个损失和精度都替换为指数移动平均值！ EMA处理！
+#acc = points,是一个列表的值
+
+def smooth_curve(points, factor=0.8):
+  smoothed_points = []
+  for point in points:
+    if smoothed_points: #空为false
+      previous = smoothed_points[-1] #将要加入到列表末位置之前 的最后一个元素提取出来
+      smoothed_points.append(previous * factor + point * (1 - factor))
+    else:
+      smoothed_points.append(point) #只是起到加入第一个值这样的作用
+  return smoothed_points #返回的列表相当于[10, 10*0.8+11*0.2, ...] 原来的是[10,11,...],简单来说就是距离变近了
+
+
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+epochs = range(len(acc))
+
+plt.plot(epochs, smooth_curve(acc), 'bo', label='Smoothed training acc')
+plt.plot(epochs, smooth_curve(val_acc), 'b', label='Smoothed validation acc')
+plt.title('Training and validation accuracy')
+plt.legend()
+
+plt.figure()
+
+plt.plot(epochs, smooth_curve(loss), 'bo', label='Smoothed training loss')
+plt.plot(epochs, smooth_curve(val_loss), 'b', label='Smoothed validation loss')
+plt.title('Training and validation loss')
+plt.legend()
+
+plt.show()
+
+#=======================================================================================================================
+#在测试集上最终确认，注意这里，测试集也是生成器，而且20*50 = 1000张测试图片！
+test_generator = test_datagen.flow_from_directory(
+        test_dir,
+        target_size=(150, 150),
+        batch_size=20,
+        class_mode='binary')
+
+test_loss, test_acc = model.evaluate_generator(test_generator, steps=50)
+print('test acc:', test_acc)
