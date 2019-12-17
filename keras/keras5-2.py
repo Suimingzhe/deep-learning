@@ -122,13 +122,7 @@ for fname in fnames:
 '''
 
 #检查文件夹的情况
-print('total training cat images:', len(os.listdir(train_cats_dir))) #os.listdir遍历所有内容的名字，构成一个list
-#print(os.listdir(train_cats_dir)) #['cat.0.jpg', 'cat.1.jpg', 'cat.10.jpg', 'cat.100.jpg',...'cat.999.jpg'],注意listdir的排列顺序！！！
-print('total training dog images:', len(os.listdir(train_dogs_dir)))
-print('total validation cat images:', len(os.listdir(validation_cats_dir)))
-print('total validation dog images:', len(os.listdir(validation_dogs_dir)))
-print('total test cat images:', len(os.listdir(test_cats_dir)))
-print('total test dog images:', len(os.listdir(test_dogs_dir)))
+
 
 #==================================================================================================================
 #下面开始构建网络
@@ -242,7 +236,7 @@ plt.show()
 # ==================================================================================================================
 # 使用数据增强 data augmentation，使用的是ImageDataGenerator，之前的特征缩放/255也是用的这个
 
-"""
+
 #这个生成器都是根据参数随机生成的！
 datagen = ImageDataGenerator(rotation_range=40, #角度值0-180
                              width_shift_range=0.2,
@@ -268,112 +262,14 @@ for batch in datagen.flow(x, batch_size=10): #flow:采集数据和标签数组�
     plt.figure(i)
     imgplot = plt.imshow(image.array_to_img(batch[0]))
     i += 1
-    if i % 4 == 0:
+    if i % 2 == 0:
         break #生成器都需要手动打破其无限循环！！
 
 plt.show() #这里生成的四张图片都不一样，都是随机的！
-"""
 
-# ==================================================================================================================
-# 进一步处理过拟合，加入dropout！
-
-model = models.Sequential()
-model.add(layers.Conv2D(filters=32, kernel_size=(3,3), activation='relu', input_shape=(150, 150, 3))) #RGB图像输入，channel=3
-model.add(layers.MaxPooling2D(pool_size=(2,2), strides=2))
-model.add(layers.Conv2D(filters=64, kernel_size=(3,3), activation='relu'))
-model.add(layers.MaxPooling2D(pool_size=(2,2), strides=2))
-model.add(layers.Conv2D(filters=128, kernel_size=(3,3), activation='relu'))
-model.add(layers.MaxPooling2D(pool_size=(2,2), strides=2))
-model.add(layers.Conv2D(filters=128, kernel_size=(3,3), activation='relu'))
-model.add(layers.MaxPooling2D(pool_size=(2,2), strides=2))
-model.add(layers.Flatten())
-model.add(layers.Dropout(rate=0.5)) #dropout在flatten之后加！
-model.add(layers.Dense(units=512, activation='relu'))
-model.add(layers.Dense(units=1, activation='sigmoid')) #sigmoid函数概率预测模型只需要一个units！
-
-#model.summary()
-
-model.compile(optimizer=optimizers.RMSprop(lr=1e-4), #这里与之前的optimizer='rmsprop'的区别就是这种方式是自己定义的，可以传入参数！
-              loss='binary_crossentropy', #sigmoid类型的概率输出采用binary_crossentropy模型
-              metrics=['accuracy']) #基于keras版本的问题，这里是全程accuracy不能写acc，否则后面画图画不出来
-
-# ==================================================================================================================
-# 最后的训练！
-
-#还是预处理过程，这里和之前相比，讲数据预处理（rescale=1./255）和数据增强进行了合并！
-train_datagen = ImageDataGenerator(rescale=1./255,
-                                   rotation_range=40,
-                                   width_shift_range=0.2,
-                                   height_shift_range=0.2,
-                                   shear_range=0.2,
-                                   zoom_range=0.2,
-                                   horizontal_flip=True)
-
-#注意，验证数据数据不能增强！！！这个名称跟书上不一样，应该是书上不严谨！训练过程与test无关！
-validation_datagen = ImageDataGenerator(rescale=1./255)
-
-#train_datagen.flow_from_directory主要干的事情：设置标签类型，resize，一次生成多少个
-train_generator = train_datagen.flow_from_directory(train_dir,
-                                                    target_size=(150, 150), #resize过程在.flow_from_directory中进行
-                                                    batch_size=32, #这里有问题！！！表示每个批量的样本数
-                                                    class_mode='binary')
-for inputs_batch, labels_batch in train_generator:
-    print(inputs_batch.shape)
-    print(labels_batch.ndim)
-
-    break
-
-
-validation_generator = validation_datagen.flow_from_directory(validation_dir,
-                                                              target_size=(150, 150),
-                                                              batch_size=32, #这里有问题！！！
-                                                              class_mode='binary')
-
-# ==================================================================================================================
-# 开始训练！
-"""
-tic = time.time()
-
-#这里没有用到上述的image，所以张量就不用转换！
-#注意这里的steps_per_epoch * batch_size = 100 *32 = 3200 > 2000个训练样本
-
-history = model.fit_generator(train_generator,
-                              steps_per_epoch=100, #一共运行100次梯度下降，这个数值算出来的，一共2000个训练样本，2000/20=100，也就是需要100次才能把所有的数据处理完
-                              epochs=100, #每一个epochs代表循环完了一次所有的train
-                              verbose = 2,
-                              validation_data=validation_generator,
-                              #这里为什么验证集也要分batch？不可以一起输入么？每一个epoch停顿的原因就是因为要算validation上的损失和精度！
-                              validation_steps=50) #这个值也是算出来的，总共1000个validation，1000/20=50，抽取50个批次
-
-toc = time.time()
-print("Time: " + str(1000*(toc - tic)) + "ms")
-
-#保存结果
-model.save('cats_and_dogs_small_2.h5')
 
 
 # ==================================================================================================================
-# 画图！
 
-acc = history.history['accuracy']
-val_acc = history.history['val_accuracy']
-loss = history.history['loss']
-val_loss = history.history['val_loss']
 
-epochs = range(1,len(acc) + 1)
-
-plt.plot(epochs, acc, 'bo', label='Training acc')
-plt.plot(epochs, val_acc, 'b', label='Validation acc')
-plt.title('Training and validation accuracy')
-plt.legend() #添加plot中的label
-
-plt.figure() #与MATLAB中figure(1),即创建了一个新的画图窗口
-
-plt.plot(epochs, loss, 'bo', label='Training loss')
-plt.plot(epochs, val_loss, 'b', label='Validation loss')
-plt.title('Training and validation loss')
-plt.legend()
-
-plt.show()
-"""
 
